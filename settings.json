@@ -1,0 +1,37 @@
+{
+ "Connections": [
+  {
+   "Id": "",
+   "Name": "test1",
+   "Url": "url1",
+   "Preferred": null
+  },
+  {
+   "Id": "",
+   "Name": "test02",
+   "Url": "http://elasticsearchv7-test02.os.rhldev.cz:80",
+   "Preferred": [
+    {
+     "IndexPrefix": "inventory",
+     "Fields": [
+      "id",
+      "product.id",
+      "warehouseId"
+     ]
+    },
+    {
+     "IndexPrefix": "inventory",
+     "Fields": [
+      "brand.name"
+     ]
+    },
+    {
+     "IndexPrefix": "inventory",
+     "Fields": [
+      "product.brand.name"
+     ]
+    }
+   ]
+  }
+ ]
+}
