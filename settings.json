@@ -28,7 +28,7 @@
     {
      "IndexPrefix": "inventory",
      "Fields": [
-      "product.brand.name"
+      "product.name"
      ]
     }
    ]
