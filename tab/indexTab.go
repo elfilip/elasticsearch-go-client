@@ -17,7 +17,7 @@ import (
 )
 
 func createIndexContent(indexTabs *widget.TabContainer, elastic *elastic.Elastic, index *elastic.Index,
-	connect *store.Connect, w *window.MainW) *widget.TabItem {
+	alias *elastic.Alias, w *window.MainW) *widget.TabItem {
 
 	indexTabs.Show()
 	docMap := elastic.LoadNFirstDocs(10, index.Name, "*")
@@ -26,11 +26,22 @@ func createIndexContent(indexTabs *widget.TabContainer, elastic *elastic.Elastic
 	searchLabel := widget.NewLabel("Search: ")
 	searchInput := NewSearchField()
 	searchInput.SetText("*")
-
 	searchLayout := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), searchLabel, searchInput, layout.NewSpacer())
-	vboxLayout := fyne.NewContainerWithLayout(layout.NewBorderLayout(searchLayout, nil, nil, nil), searchLayout, table)
+	headerLayout := fyne.NewContainerWithLayout(layout.NewVBoxLayout())
+	vboxLayout := fyne.NewContainerWithLayout(layout.NewBorderLayout(headerLayout, nil, nil, nil), headerLayout, table)
 
-	indexTab := widget.NewTabItem(index.Name, fyne.NewContainerWithLayout(layout.NewMaxLayout(),
+	var tabName string
+	if alias == nil {
+		tabName = index.Name
+	}else{
+		indexName := widget.NewEntry()
+		indexName.SetText(alias.IndexInner.Name)
+		headerLayout.Add(fyne.NewContainerWithLayout(layout.NewHBoxLayout(),
+			widget.NewLabel("Index name: "), indexName))
+		tabName = alias.Alias
+	}
+	headerLayout.Add(searchLayout)
+	indexTab := widget.NewTabItem(tabName, fyne.NewContainerWithLayout(layout.NewMaxLayout(),
 		vboxLayout))
 	closeTabButton := widget.NewButton("Close", func() {
 		if len(indexTabs.Items) == 1 {
@@ -72,7 +83,7 @@ func createIndexDataTable(data *service.EsData, w *window.MainW) *widget.Table {
 
 		})
 	}
-	for key, _ := range data.Data[0] {
+	for key, _ := range data.Data[0]["_source"].(map[string]interface{}) {
 		fields = append(fields, key)
 	}
 
@@ -120,12 +131,15 @@ func createIndexDataTable(data *service.EsData, w *window.MainW) *widget.Table {
 		scroll.SetMinSize(fyne.NewSize(750, 400))
 		dialog.ShowCustomConfirm(fields[id.Col], "Save", "Cancel", scroll, func(confirm bool) {
 			if confirm {
+				docId := data.GetDocId(id.Row - 1)
 				if id.Col == 0 {
-					docId := data.GetDocId(id.Row - 1)
 					docContent := fieldEdit.Text
 					data.Elastic.UpdateDoc(docId, docContent, data.Index)
 					fmt.Println("Updated doc ", docId)
 					data.RefreshData()
+				}else{
+					dataString := data.UpdatePath(id.Row-1, fields[id.Col], fieldEdit.Text)
+					data.Elastic.UpdateDoc(docId, dataString, data.Index)
 				}
 			}
 			table.Unselect(id)
@@ -142,11 +156,16 @@ func createTab(connect *store.Connect, w *window.MainW) *widget.TabItem {
 	elastic.ConnectToES()
 	indexTabs := widget.NewTabContainer()
 	indexContent := fyne.NewContainerWithLayout(layout.NewMaxLayout(), indexTabs)
+	indexAliasTab := widget.NewTabContainer()
 	indexList := createIndexList(indexTabs, elastic, connect, w)
+	aliasList := createAliasList(indexTabs, elastic, connect, w)
+	indexAliasTab.Append(widget.NewTabItem("Indices", indexList))
+	indexAliasTab.Append(widget.NewTabItem("Aliases", aliasList))
+	indexAliasTab.SelectTabIndex(0)
 	indexHeader := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), widget.NewLabel(connect.Name), widget.NewLabel(connect.Url))
 
-	content := fyne.NewContainerWithLayout(layout.NewBorderLayout(indexHeader, nil, indexList, nil),
-		indexList, indexContent, indexHeader)
+	content := fyne.NewContainerWithLayout(layout.NewBorderLayout(indexHeader, nil, indexAliasTab, nil),
+		indexAliasTab, indexContent, indexHeader)
 
 	tab := widget.NewTabItem(connect.Name, content)
 	progress.Hide()
@@ -156,15 +175,32 @@ func createTab(connect *store.Connect, w *window.MainW) *widget.TabItem {
 
 func createIndexList(indexTabs *widget.TabContainer, elastic *elastic.Elastic, connect *store.Connect, w *window.MainW) *widget.ScrollContainer {
 	indices := make([]fyne.CanvasObject, 0)
-	indices = append(indices, widget.NewLabel("Indices"))
 	for _, index := range elastic.Indices {
 		indexInner := index
 		idxButton := widget.NewButton(index.Name, func() {
-			indexTab := createIndexContent(indexTabs, elastic, &indexInner, connect, w)
+			indexTab := createIndexContent(indexTabs, elastic, &indexInner, nil, w)
 			indexTabs.Append(indexTab)
 			indexTabs.SelectTab(indexTab)
 			indexTabs.Refresh()
 		})
+		idxButton.Alignment = widget.ButtonAlignLeading
+		indices = append(indices, idxButton)
+	}
+	indicesLayout := widget.NewVScrollContainer(widget.NewVBox(indices...))
+	return indicesLayout
+}
+
+func createAliasList(indexTabs *widget.TabContainer, elastic *elastic.Elastic, connect *store.Connect, w *window.MainW) *widget.ScrollContainer {
+	indices := make([]fyne.CanvasObject, 0)
+	for _, alias := range elastic.Aliases {
+		aliasInner := alias
+		idxButton := widget.NewButton(alias.Alias, func() {
+			indexTab := createIndexContent(indexTabs, elastic, &aliasInner.IndexInner, &aliasInner, w)
+			indexTabs.Append(indexTab)
+			indexTabs.SelectTab(indexTab)
+			indexTabs.Refresh()
+		})
+		idxButton.Alignment = widget.ButtonAlignLeading
 		indices = append(indices, idxButton)
 	}
 	indicesLayout := widget.NewVScrollContainer(widget.NewVBox(indices...))
